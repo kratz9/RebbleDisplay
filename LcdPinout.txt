@@ -1,0 +1,32 @@
+
+LCD Connector
+(Top View)
+
+
+      DATA[?] 1|24 DATA[?]
+      HCK     2|23 DATA[?]
+      VCK     3|22 DATA[?]
+      VST     4|21 DATA[?]
+      XRST    5|20 DATA[?]
+      ENB     6|19 HST
+      GND     7|18 ?
+      GND     8|17 XFRP
+      VLCD    9|16 FRP
+      VCCD   10|15 VCOM
+      GND    11|14 GND
+      VDDP   12|13 ?
+	     
+
+
+ice40 pinout
+(Top View)
+*TODO*
+
+         F6      F5      F4      F3      F2      F1
+	 E6      E5      E4      E3      E2      E1
+	 D6      D5      D4      D3      E2      D1
+	 C6      C5      C4      C3      C2      C1
+	 B6      B5      B4      B3      B2      B1
+	 A6      A5      A4      A3      A2      A1
+
+

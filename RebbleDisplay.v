@@ -2,7 +2,10 @@
 
 module rebble_screen
   (
-   parameter CLOCK_PERIOD=500;
+   parameter CLOCK_PERIOD= 500; //nS
+   parameter LINES       = 148;
+   parameter COLUMNS     = 205;
+   
    /* Master clock */
    input wire 	    clock;
    
@@ -78,31 +81,268 @@ module rebble_screen
 
 
    // LCD CONSTANTS
-   parameter IDLE=2'h0;
+   // States
+   parameter 
+     IDLE   =4'h0,
+     START  =4'h1,
+     VSTART =4'h2,
+     VSTART2=4'h3,
+     VCLK1  =4'h4,
+     HSTART =4'h5,
+     HSTART2=4'h6,
+     HSTART3=4'h7,
+     HSTART4=4'h8,
+     HRUN   =4'h9,
+     HWAIT  =4'hA,
+     HEND   =4'hB,
+     VEND   =4'hC
 
-   parameter VCK_PERIOD = 223;
+   //Timings - nS  
+   parameter 
+     XRST_DELAY = 10000  /CLOCK_PERIOD,
+     VST_DELAY  = 10000  /CLOCK_PERIOD,
+     VST_LENGTH = 119700 /CLOCK_PERIOD,
+     VCK_DELAY  = 4000   /CLOCK_PERIOD,
+     VCK_PERIOD = 111700 /CLOCK_PERIOD,
+     HST_DELAY  = 5000   /CLOCK_PERIOD,
+     HCK_DELAY  = 1000   /CLOCK_PERIOD,
+     HCK_PERIOD = 950    /CLOCK_PERIOD,
+     ENB_DELAY  = 30000  /CLOCK_PERIOD,
+     ENB_PERIOD = 51700  /CLOCK_PERIOD,
+     DATA_DELAY = 480    /CLOCK_PERIOD
+     ;
+   
    
    wire 	    lcd_clk;
-
+   reg 		    draw;   
+   
    reg 		    vck_en;
    reg 		    hck_en;
+   reg [7:0] 	    row;
+   reg [7:0] 	    col;   
 
    reg [15:0] 	    clkdiv;
-   
-   always @(posedge ldc_clk)
+   reg [3:0] 	    state;
+
+   always @(posedge draw)
      begin
-	clkdiv <= clkdiv + 1;
-	if(clkdiv > 
+	if(state = IDLE)
+	  begin
+            state <= START;
+	    clkdiv <= 0;	
+	    draw <= 1'b0;
+	  end
+     end   
    
 
+   reg [15:0] vckdiv;
+   reg [15:0] hckdiv;
+
+   reg 	      vckreset;
+   reg 	      hckreset;
+   reg 	      linereset;
+   reg 	      colreset;
+   
+   
+   wire	      nvck;   //Inverted signal needed to clock on both edges
+   wire       nhck;
+   
+   assign nvck = ~vck;
+   assign nhck = ~vck;
+   
+   
+   always @(posedge lcd_clk)
+     begin
+	if(vckreset)
+	  begin
+	     vck <= 1'b1;
+	     vckdiv <= 0;
+	     vckreset <= 1'b0;
+	     linereset <= 1'b1;	     
+	  end	
+	if(vck_en)
+	  begin
+	    vckdiv <= vckdiv + 1;	
+	    if(vckdiv >= VCK_PERIOD)
+	      begin
+	         vckdiv <= 0;
+	         vck <= ~vck;		 
+	      end
+	  end
+	if(hckreset)
+	  begin
+	     hck <= 1'b1;
+	     hckdiv <= 0;
+	     hckreset <= 1'b0;
+	  end	     
+	if(hck_en)
+	  begin
+	     hckdiv <= hckdiv + 1;
+	     if(hckdiv >= HCK_PERIOD)
+	       begin
+		  hckdiv <= 0;
+		  hck <= ~hck;
+	       end   
+     end // always @ (posedge lcd_clk)
+
+	
+   always @(posedge vck or posedge nvck)
+     begin
+	if(linereset)
+	  begin
+             line <= 0;
+	     linereset <= 1'b0;
+	  end	     
+	if(nvck = 1'b1)
+	  begin	    
+             line <= line + 1;
+	  end
+     end // always @ (posedge vck or posedge nvck)
+
+   always @(posedge hck or posedge nhck)
+     begin
+	if(colreset)
+	  begin
+	     col <= 0;
+	     colreset <= 1'b0;
+	  end
+	else
+	  begin
+	     col <= col + 1;
+	  end
+     end // always @ (posedge hck or posedge nhck)
+   
+ 
+   
+   //State
+   always @(posedge lcd_clk)
+     begin	
+	case(state)
+	  START:
+	    if(clkdiv >= XRST_DELAY)	      
+	      begin
+		 xrst <= 1'b1;	      
+		 clkdiv <= 0;
+		 state <= VSTART;
+	      end
+	    else
+	      clkdiv <= clkdiv + 1;
+	  VSTART:
+	    if(clkdiv >= VST_DELAY)
+	      begin
+		 vst <= 1'b1;
+		 clkdiv <=0;
+		 state <= VSTART2;
+	      end
+	    else
+	      clkdiv <= clkdiv + 1;
+	  VSTART2:
+	    if(clkdiv >= VCK_DELAY)
+	      begin
+		 clkdiv <= 0;		 
+		 vck_en <= 1'b1;
+		 vckreset <= 1'b1;
+		 state <= VCLK1;
+	      end
+	    else
+	      clkdiv <= clkdiv + 1;
+	  VCLK1:
+	    if(line=1)
+	      begin
+		 clkdiv <= 0;		 
+                 vst <= 1'b0;
+		 state <= HSTART;		 
+	      end
+	  HSTART:
+	    if(clkdiv >= HST_DELAY)
+	      begin
+		 clkdiv <= 0;
+		 hst <= 1'b1;
+		 vst <= 1'b0;
+		 state <= HSTART2;
+	      end
+	    else
+	      clkdiv <= clkdiv +1;
+	  HSTART2:
+	    if(clkdiv >= HCK_DELAY)
+	      begin
+		 hckreset <= 1'b1;		 
+		 hck_en <= 1'b1;
+		 clkdiv <= 0;
+		 state <= HSTART3;
+	      end
+	    else
+	      clkdiv <= clkdiv +1;
+	  HSTART3:
+	    if(col=1)
+	      begin
+		 state <= HSTART4;
+	      end
+	  HSTART4:
+	    if(clkdiv >= HST_DELAY)
+	      begin
+		 hst <= 0;
+		 clkdiv <= 0;
+		 state <= HRUN;
+	      end
+	    else
+	      clkdiv <= clkdiv + 1;
+	  HRUN:
+	    if(hckdiv > DATA_DELAY)
+	      begin
+		 //TODO: APPLY DATA
+		 state <= HWAIT;
+	      end     	  
+	  HWAIT:
+	    if(hckdiv < DATA_DELAY)
+	      begin
+		 if(row >=(ROWS/2)+1 and hck = 0)
+		   begin
+		      hck_en <= 1'b0;
+		      state <= HEND;		      
+		   end
+		 else
+		   state <= HRUN;
+	      end
+	  HEND:
+	    if(vckdiv = 0 and line <= LINES)
+	      begin
+		 state = HSTART;
+	      end
+	    else if(vckdiv = 0 and line > LINES)
+	      begin
+		 vck_en <= 1'b0;
+		 state <= VEND;
+		 clkdiv <= 0;		 
+	      end
+	  VEND:
+	    if(clkdiv >= XRST_DELAY)
+	      begin
+		 //TODO: Make sure all signals are reset
+		 xrst <= 1'b0;		 
+		 clkdiv <= 0;
+		 state <= IDLE;		 
+	      end
+	end // always @ (posedge lcd_clk)
+   
+
+   //TODO: Handle ENB signal		 
+		 
+		
+	     
+	       
+   //TODO: VCOM, RFP, XRFP
    always @(posedge ldc_clk)
      begin
+     end
+   
 	
 		     
 		     
 
 endmodule; // rebble_screen
 
+	   
 
 module ram #(dataw = 6, addrw = 15)
 (	    
