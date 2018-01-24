@@ -77,7 +77,7 @@ module rebble_screen
 		     .read_en(pixel_read_en),
 		     .rclk(pixel_rclk)
 		     );
-   
+  
 
 
    // LCD CONSTANTS
@@ -109,11 +109,14 @@ module rebble_screen
      HCK_PERIOD = 950    /CLOCK_PERIOD,
      ENB_DELAY  = 30000  /CLOCK_PERIOD,
      ENB_PERIOD = 51700  /CLOCK_PERIOD,
-     DATA_DELAY = 480    /CLOCK_PERIOD
+     DATA_DELAY = 480    /CLOCK_PERIOD,
+     VCOM_PERIOD= 8330000/CLOCK_PERIOD,
      ;
    
    
    wire 	    lcd_clk;
+   assign lcd_clk = clock;
+   
    reg 		    draw;   
    
    reg 		    vck_en;
@@ -122,18 +125,10 @@ module rebble_screen
    reg [7:0] 	    col;   
 
    reg [15:0] 	    clkdiv;
+   reg [15:0] 	    vcomclk_div;
+   reg [15:0] 	    enbclk_div;
+    	    
    reg [3:0] 	    state;
-
-   always @(posedge draw)
-     begin
-	if(state = IDLE)
-	  begin
-            state <= START;
-	    clkdiv <= 0;	
-	    draw <= 1'b0;
-	  end
-     end   
-   
 
    reg [15:0] vckdiv;
    reg [15:0] hckdiv;
@@ -142,13 +137,14 @@ module rebble_screen
    reg 	      hckreset;
    reg 	      linereset;
    reg 	      colreset;
+   reg 	      enbflg;
    
    
    wire	      nvck;   //Inverted signal needed to clock on both edges
    wire       nhck;
    
    assign nvck = ~vck;
-   assign nhck = ~vck;
+   assign nhck = ~hck;
    
    
    always @(posedge lcd_clk)
@@ -158,7 +154,9 @@ module rebble_screen
 	     vck <= 1'b1;
 	     vckdiv <= 0;
 	     vckreset <= 1'b0;
-	     linereset <= 1'b1;	     
+	     linereset <= 1'b1;	  
+	     enb <= 1'b0;	 
+             enbflg <= 1'b0;    
 	  end	
 	if(vck_en)
 	  begin
@@ -166,8 +164,26 @@ module rebble_screen
 	    if(vckdiv >= VCK_PERIOD)
 	      begin
 	         vckdiv <= 0;
-	         vck <= ~vck;		 
+	         vck <= ~vck;
+		 enbclk_div <= 1'b0;
+                 enbflg <= 1'b1	 
 	      end
+            else if(enbflg = 1'b1 and enbclk_div >= ENB_DELAY)
+	      begin
+		 enb <= 1'b1;
+		 enbclk_div <= 0;
+		 enbflg <= 1'b0;		 
+	      end
+	    else if(enb = 1'b1 and enbclk_div >= ENB_PERIOD)
+	      begin
+		 enb <= 1'b0;
+		 enbclk_div <= 0;
+	      end	     
+	    else
+	      begin
+		 vckdiv <= vckdiv + 1;
+		 enbclk_div <= enbclk_div +1;		 
+	      end	     
 	  end
 	if(hckreset)
 	  begin
@@ -218,6 +234,12 @@ module rebble_screen
    always @(posedge lcd_clk)
      begin	
 	case(state)
+	  IDLE:
+	    if(draw = 1'b1)
+	      begin
+		 //TODO: Reset all regs
+		 state <= START;
+	      end	  
 	  START:
 	    if(clkdiv >= XRST_DELAY)	      
 	      begin
@@ -334,10 +356,17 @@ module rebble_screen
    //TODO: VCOM, RFP, XRFP
    always @(posedge ldc_clk)
      begin
+	if(vcomclk_div = 0)
+	  begin
+	     vcom <= ~vcom;
+             frp <= ~frp;
+             xfrp <= frp;	     
+	     vcomclk_div <= VCOM_PERIOD;
+	  end
+	else
+	  vcomclk_div <= vcomclk_div - 1
      end
-   
-	
-		     
+   	     
 		     
 
 endmodule; // rebble_screen
